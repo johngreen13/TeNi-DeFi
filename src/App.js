@@ -1,20 +1,33 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import Login from './pages/Login';
 import Home from './pages/Home';
-import Auctions from './pages/Auctions'; // Import the Auctions page
-import CreateAuction from './pages/CreateAuction'; // Import Create Auction
-import ExploreAuctions from './pages/ExploreAuctions'; // Import Explore Auctions
 
 function App() {
+    const [user, setUser] = useState(null);
+
+    const handleLogin = (account) => {
+        setUser(account); // Save the logged-in MetaMask account
+    };
+
+    const handleLogout = () => {
+        setUser(null); // Clear the logged-in user
+    };
+
     return (
         <Router>
             <Routes>
-                <Route path="/" element={<Login onLogin={(walletAddress) => console.log('Logged in with:', walletAddress)} />} />
-                <Route path="/home" element={<Home />} /> {/* Home Page */}
-                <Route path="/auctions" element={<Auctions />} /> {/* Auctions Page */}
-                <Route path="/auctions/create" element={<CreateAuction />} /> {/* Create Auction */}
-                <Route path="/auctions/explore" element={<ExploreAuctions />} /> {/* Explore Auctions */}
+                <Route path="/" element={<Login onLogin={handleLogin} />} />
+                <Route
+                    path="/home"
+                    element={
+                        user ? (
+                            <Home onLogout={handleLogout} />
+                        ) : (
+                            <Login onLogin={handleLogin} />
+                        )
+                    }
+                />
             </Routes>
         </Router>
     );

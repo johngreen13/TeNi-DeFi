@@ -1,58 +1,23 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 const Home = () => {
-  return (
-    <div className="min-h-screen bg-gray-900 text-white">
-      {/* Navigation Tabs */}
-      <nav className="bg-gray-800 p-4">
-        <ul className="flex justify-around">
-          <li>
-            <Link
-              to="/auctions"
-              className="text-white hover:text-purple-400 font-bold"
-            >
-              Auctions
-            </Link>
-          </li>
-          <li>
-            <Link
-              to="/profile"
-              className="text-white hover:text-purple-400 font-bold"
-            >
-              User Profile
-            </Link>
-          </li>
-          <li>
-            <Link
-              to="/governance"
-              className="text-white hover:text-purple-400 font-bold"
-            >
-              Governance and Voting
-            </Link>
-          </li>
-          <li>
-            <Link
-              to="/notifications"
-              className="text-white hover:text-purple-400 font-bold"
-            >
-              Notifications
-            </Link>
-          </li>
-        </ul>
-      </nav>
+    const navigate = useNavigate();
 
-      {/* Main Content */}
-      <div className="p-8">
-        <h1 className="text-4xl font-bold mb-4">Welcome to TENI DeFi</h1>
-        <p className="text-lg text-gray-400">
-          Explore auctions, manage your profile, participate in governance, and
-          stay updated with notifications.
-        </p>
+    const handleLogout = () => {
+        // Clear any user session data (if applicable)
+        console.log("User logged out");
 
-      </div>
-    </div>
-  );
+        // Redirect to the Login page
+        navigate('/');
+    };
+
+    return (
+        <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center">
+            <h1 className="text-4xl font-bold mb-6">Welcome to TENI DeFi</h1>
+            <p className="text-lg text-gray-400">You are now logged in with your wallet.</p>
+        </div>
+    );
 };
 
 export default Home;

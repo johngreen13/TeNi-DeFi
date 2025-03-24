@@ -1,18 +1,20 @@
-const express = require('express');
+const mongoose = require('mongoose');
 const Transaction = require('../models/Transaction');
-const router = express.Router();
-
-// Add a transaction
-router.post('/', async (req, res) => {
-    const { walletAddress, transactionHash, amount } = req.body;
-
-    try {
-        const transaction = new Transaction({ walletAddress, transactionHash, amount });
-        await transaction.save();
-        res.status(200).json(transaction);
+const transactionSchema = new mongoose.Schema({
+    walletAddress: { type: String, required: true },
+    transactionHash: { type: String, required: true },
+    amount: { type: Number, required: true },
+    timestamp: { type: Date, default: Date.now }
+});
+});
+try {
+    module.exports = mongoose.model('Transaction', transactionSchema); actionHash, amount
+});
+await transaction.save();
+res.status(200).json(transaction);
     } catch (error) {
-        res.status(500).json({ error: 'Error saving transaction' });
-    }
+    res.status(500).json({ error: 'Error saving transaction' });
+}
 });
 
 // Get transactions for a user

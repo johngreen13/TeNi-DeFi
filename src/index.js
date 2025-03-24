@@ -1,11 +1,15 @@
 import React from 'react';
-import ReactDOM from 'react-dom';
-import App from './App'; // Ensure the path to App.js is correct
-import './index.css'; // Ensure Tailwind CSS is applied
+import ReactDOM from 'react-dom/client'; // Use the new createRoot API
+import App from './App';
+import './index.css'; // If you have global styles
 
-ReactDOM.render(
+// Get the root element from the DOM
+const rootElement = document.getElementById('root');
+
+// Create a root and render the App component
+const root = ReactDOM.createRoot(rootElement);
+root.render(
     <React.StrictMode>
         <App />
-    </React.StrictMode>,
-    document.getElementById('root') // Ensure this matches the id in your index.html
+    </React.StrictMode>
 );

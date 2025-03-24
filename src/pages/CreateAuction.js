@@ -1,14 +1,13 @@
 import React, { useState } from "react";
 import { ethers } from "ethers";
-import { createAuction } from "../auction"; // Import createAuction from auction.js
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from "react-router-dom";
 
-const CreateAuction = ({ addAuction }) => {
+const CreateAuction = ({ addOngoingAuction, addUpcomingAuction }) => {
     const navigate = useNavigate(); // Hook for navigation
 
     const [auctionType, setAuctionType] = useState("");
     const [auctionDetails, setAuctionDetails] = useState({
-        auctionId: "", // Auction ID will be generated automatically
+        auctionId: "",
         description: "",
         image: null,
         startingPrice: "",
@@ -16,13 +15,12 @@ const CreateAuction = ({ addAuction }) => {
         tokens: "",
     });
     const [status, setStatus] = useState("");
-    const [auctionData, setAuctionData] = useState(null);
 
     // Function to generate a unique Auction ID
     const generateAuctionId = () => {
-        const timestamp = Date.now(); // Current timestamp
-        const randomString = Math.random().toString(36).substring(2, 8); // Random alphanumeric string
-        return `AUC-${timestamp}-${randomString}`; // Example: AUC-1678901234567-abc123
+        const timestamp = Date.now();
+        const randomString = Math.random().toString(36).substring(2, 8);
+        return `AUC-${timestamp}-${randomString}`;
     };
 
     // Handle auction type selection
@@ -44,9 +42,10 @@ const CreateAuction = ({ addAuction }) => {
         setAuctionDetails((prev) => ({ ...prev, image: file }));
     };
 
-    const handleCreateAuction = async () => {
+    // Begin Now: Execute the auction immediately
+    const handleBeginNow = async () => {
         try {
-            setStatus("Creating auction...");
+            setStatus("Starting auction immediately...");
 
             // Convert startingPrice to uint256 (ETH to Wei)
             const startingPrice = ethers.utils.parseEther(auctionDetails.startingPrice);
@@ -61,71 +60,60 @@ const CreateAuction = ({ addAuction }) => {
             // Construct the auction data object
             const auction = {
                 auctionId: auctionDetails.auctionId,
+                auctionType,
                 startingPrice, // In Wei
                 endTime, // In seconds
                 description: auctionDetails.description,
                 image: auctionDetails.image ? auctionDetails.image.name : null,
-                startNow: true, // Assuming this is for "Begin Now"
+                startNow: true,
             };
 
-            console.log("Auction object being passed to createAuction():", auction);
+            // Add the auction to the ongoing auctions list
+            addOngoingAuction(auction);
 
-            // Call createAuction() in auction.js
-            await createAuction(auction);
-
-            setStatus("Auction created successfully!");
+            setStatus("Auction started successfully!");
+            navigate("/auctions/explore"); // Redirect to Explore Auctions page
         } catch (error) {
-            console.error("Error creating auction:", error);
-            setStatus("Error creating auction. Check console for details.");
+            console.error("Error starting auction:", error);
+            setStatus("Error starting auction. Check console for details.");
         }
     };
 
-    const executeAuction = () => {
-        if (!auctionData) {
-            alert("No auction data available.");
-            return;
+    // Schedule for Later: Schedule the auction for a future time
+    const handleScheduleForLater = async () => {
+        try {
+            setStatus("Scheduling auction...");
+
+            // Convert startingPrice to uint256 (ETH to Wei)
+            const startingPrice = ethers.utils.parseEther(auctionDetails.startingPrice);
+
+            // Convert endTime to uint256 (seconds)
+            const endTime = parseInt(auctionDetails.endTime);
+
+            if (isNaN(endTime) || endTime <= 0) {
+                throw new Error("Invalid end time. Please enter a valid number.");
+            }
+
+            // Construct the auction data object
+            const auction = {
+                auctionId: auctionDetails.auctionId,
+                auctionType,
+                startingPrice, // In Wei
+                endTime, // In seconds
+                description: auctionDetails.description,
+                image: auctionDetails.image ? auctionDetails.image.name : null,
+                startNow: false,
+            };
+
+            // Add the auction to the upcoming auctions list
+            addUpcomingAuction(auction);
+
+            setStatus("Auction scheduled successfully!");
+            navigate("/auctions/explore"); // Redirect to Explore Auctions page
+        } catch (error) {
+            console.error("Error scheduling auction:", error);
+            setStatus("Error scheduling auction. Check console for details.");
         }
-
-        switch (auctionData.auctionType) {
-            case "English Auction":
-                executeEnglishAuction();
-                break;
-            case "Dutch Auction":
-                executeDutchAuction();
-                break;
-            case "Sealed-Bid Auction":
-                executeSealedBidAuction();
-                break;
-            case "Fixed-Swap Auction":
-                executeFixedSwapAuction();
-                break;
-            default:
-                alert("Invalid auction type.");
-        }
-    };
-
-    const executeEnglishAuction = () => {
-        alert("Executing English Auction...");
-        // Simulate auction logic
-        setStatus("English Auction executed successfully!");
-    };
-
-    const executeDutchAuction = () => {
-        alert("Executing Dutch Auction...");
-        // Simulate auction logic
-        setStatus("Dutch Auction executed successfully!");
-    };
-
-    const executeSealedBidAuction = () => {
-        alert("Executing Sealed-Bid Auction...");
-        // Simulate auction logic
-        setStatus("Sealed-Bid Auction executed successfully!");
-    };
-
-    const executeFixedSwapAuction = () => {
-        alert("Executing Fixed-Swap Auction...");
-        // Simulate auction logic
-        setStatus("Fixed-Swap Auction executed successfully!");
     };
 
     return (
@@ -191,28 +179,19 @@ const CreateAuction = ({ addAuction }) => {
             </div>
             <div className="flex space-x-4">
                 <button
-                    onClick={handleCreateAuction}
+                    onClick={handleBeginNow}
                     className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
                 >
-                    Create Auction
+                    Begin Now
                 </button>
                 <button
-                    onClick={executeAuction}
+                    onClick={handleScheduleForLater}
                     className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
                 >
-                    Execute Auction
+                    Schedule for Later
                 </button>
             </div>
             {status && <p className="mt-4">{status}</p>}
-            {/* Back Button */}
-            <div className="mt-8">
-                <button
-                    onClick={() => navigate(-1)} // Navigate back to the previous page
-                    className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded"
-                >
-                    Back
-                </button>
-            </div>
         </div>
     );
 };
