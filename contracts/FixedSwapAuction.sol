@@ -1,42 +1,224 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.19;
 
-contract FixedSwapAuction {
-    address public auctioneer;
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
+import "./PhysicalItemBase.sol";
+
+contract FixedSwapAuction is PhysicalItemBase, ReentrancyGuard, Pausable {
+    address private _seller;
     string public description;
     string public image;
-    uint public fixedPrice;
-    uint public totalSupply;
-    uint public sold;
+    uint public price;
+    bool public isCompleted;
+    address private _winner;
+    
+    // Custom event for this contract type
+    event Purchase(address indexed buyer, uint amount);
 
-    mapping(address => uint) public purchases;
+    modifier onlyEscrowFunded() override {
+        require(escrowFunded, "Escrow not funded");
+        _;
+    }
 
-    event Purchase(address buyer, uint amount);
+    modifier onlySeller() override {
+        require(msg.sender == _seller, "Only seller can call this");
+        _;
+    }
+
+    modifier onlyBuyer() override {
+        require(msg.sender == _winner, "Only buyer can call this");
+        _;
+    }
 
     constructor(
         string memory _description,
         string memory _image,
-        uint _fixedPrice,
-        uint _totalSupply
+        uint _price,
+        string memory _name,
+        string memory _itemDescription,
+        string memory _condition,
+        string memory _dimensions,
+        uint256 _weight,
+        string[] memory _images,
+        string memory _shippingAddress,
+        bool _isPhysical
     ) {
-        auctioneer = msg.sender;
+        _seller = msg.sender;
         description = _description;
         image = _image;
-        fixedPrice = _fixedPrice;
-        totalSupply = _totalSupply;
-        sold = 0;
+        price = _price;
+        isCompleted = false;
+
+        // Initialize physical item details
+        item = PhysicalItem({
+            name: _name,
+            description: _itemDescription,
+            condition: _condition,
+            dimensions: _dimensions,
+            weight: _weight,
+            images: _images,
+            shippingAddress: _shippingAddress,
+            isPhysical: _isPhysical
+        });
+
+        emit AuctionCreated(msg.sender, _price, 0, _description);
     }
 
-    function buy(uint _amount) external payable {
-        require(sold + _amount <= totalSupply, "Not enough items left");
-        require(msg.value == _amount * fixedPrice, "Incorrect payment amount");
+    function getCurrentPrice() external view override returns (uint256) {
+        return price;
+    }
 
-        sold += _amount;
-        purchases[msg.sender] += _amount;
+    function placeBid() external payable override nonReentrant whenNotPaused {
+        require(!isCompleted, "Auction has already ended");
+        require(msg.value >= price, "Bid must meet or exceed the price");
 
-        emit Purchase(msg.sender, _amount);
+        isCompleted = true;
+        _winner = msg.sender;
 
-        // Transfer funds to the auctioneer
-        payable(auctioneer).transfer(msg.value);
+        emit BidPlaced(msg.sender, msg.value);
+        emit AuctionEnded(msg.sender, msg.value);
+
+        if (item.isPhysical) {
+            // Create escrow for physical items
+            uint256 escrowFee = (msg.value * ESCROW_FEE_PERCENTAGE) / ESCROW_FEE_DENOMINATOR;
+            escrow = Escrow({
+                isActive: true,
+                escrowAgent: address(this),
+                escrowFee: escrowFee,
+                itemReceived: false,
+                paymentReleased: false
+            });
+            emit EscrowCreated(escrow.escrowAgent, escrowFee);
+        } else {
+            // For digital items, transfer payment immediately
+            payable(_seller).transfer(price);
+            if (msg.value > price) {
+                payable(msg.sender).transfer(msg.value - price);
+            }
+        }
+    }
+
+    function endAuction() external override {
+        require(!isCompleted, "Auction already ended");
+        isCompleted = true;
+        emit AuctionEnded(address(0), 0);
+    }
+
+    function fundEscrow() external payable override onlySeller {
+        require(!escrowFunded, "Escrow already funded");
+        require(msg.value > 0, "Must send ETH");
+        
+        uint256 escrowAmount = (price * ESCROW_FEE_PERCENTAGE) / ESCROW_FEE_DENOMINATOR;
+        require(msg.value >= escrowAmount, "Insufficient escrow amount");
+        
+        escrowBalance = escrowAmount;
+        escrowFunded = true;
+        emit EscrowFunded(escrowAmount);
+    }
+
+    function shipItem(string memory trackingNumber) external override onlySeller onlyEscrowFunded {
+        require(escrow.isActive, "Escrow not active");
+        require(bytes(trackingNumber).length > 0, "Invalid tracking number");
+        
+        escrow.isActive = false;
+        emit ItemShipped(msg.sender, trackingNumber);
+    }
+
+    function confirmItemReceived(bool conditionMet) external override onlyBuyer onlyEscrowFunded {
+        require(!escrow.isActive, "Escrow still active");
+        require(!escrow.itemReceived, "Item already received");
+        
+        escrow.itemReceived = true;
+        escrow.paymentReleased = true;
+        emit ItemReceived(msg.sender, conditionMet);
+        
+        if (conditionMet) {
+            // Release escrow to seller
+            uint256 sellerAmount = escrowBalance;
+            escrowBalance = 0;
+            (bool success, ) = payable(_seller).call{value: sellerAmount}("");
+            require(success, "Transfer failed");
+            emit EscrowReleased(_seller, sellerAmount);
+        } else {
+            // Refund escrow to buyer
+            uint256 buyerAmount = escrowBalance;
+            escrowBalance = 0;
+            (bool success, ) = payable(msg.sender).call{value: buyerAmount}("");
+            require(success, "Transfer failed");
+            emit EscrowRefunded(msg.sender, buyerAmount);
+        }
+    }
+
+    function raiseDispute(string memory reason) external override onlyBuyer onlyEscrowFunded {
+        require(!escrow.isActive, "Escrow still active");
+        require(!escrow.itemReceived, "Item already received");
+        emit DisputeRaised(msg.sender, reason);
+    }
+
+    function resolveDispute(address disputeWinner) external override onlySeller onlyEscrowFunded {
+        require(!escrow.isActive, "Escrow still active");
+        require(!escrow.itemReceived, "Item already received");
+        require(!escrow.paymentReleased, "Payment already released");
+        
+        uint256 amount = escrowBalance;
+        escrowBalance = 0;
+        escrow.paymentReleased = true;
+        
+        (bool success, ) = payable(disputeWinner).call{value: amount}("");
+        require(success, "Transfer failed");
+        emit DisputeResolved(disputeWinner, amount);
+    }
+
+    function getEscrowAmount() public view override returns (uint256) {
+        return (price * ESCROW_FEE_PERCENTAGE) / ESCROW_FEE_DENOMINATOR;
+    }
+
+    function getAuctionDetails() external view override returns (
+        address sellerAddr,
+        string memory desc,
+        string memory img,
+        uint256 currentPrice,
+        uint256 endTime,
+        bool completed,
+        address winnerAddr,
+        PhysicalItem memory physicalItem,
+        Escrow memory escrowInfo
+    ) {
+        return (
+            _seller,
+            description,
+            image,
+            price,
+            0, // Fixed swap auctions don't have an end time
+            isCompleted,
+            _winner,
+            item,
+            escrow
+        );
+    }
+
+    function seller() public view override returns (address) {
+        return _seller;
+    }
+
+    function winner() public view override returns (address) {
+        return _winner;
+    }
+
+    function auctioneer() public view override returns (address) {
+        return _seller;
+    }
+
+    function getAuctionPrice() public view override returns (uint256) {
+        return price;
+    }
+
+    function purchases(address) public view override returns (uint256) {
+        return 0; // Fixed swap auctions don't track purchases
+    }
+
+    function onlyOwner() internal override {
+        require(msg.sender == _seller, "Only owner can call this");
     }
 }

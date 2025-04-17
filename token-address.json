@@ -1,0 +1,9 @@
+{
+  "network": "ganache",
+  "token": {
+    "address": "0x61A256f5A3bA838e2cBe6688A4409219a8D5971a",
+    "name": "TeNi Token",
+    "symbol": "TNI",
+    "decimals": 18
+  }
+}

@@ -1,46 +1,65 @@
 import React from 'react';
+import { ethers } from 'ethers';
 
 const AuctionCard = ({ auctionDetails }) => {
-  const {
-    highestBidder,
-    highestBid,
-    startingPrice,
-    currentPrice,
-    endTime,
-  } = auctionDetails;
+    if (!auctionDetails) {
+        return (
+            <div className="bg-gray-800 rounded-lg p-6">
+                <p className="text-gray-400">Invalid auction details</p>
+            </div>
+        );
+    }
 
-  const formattedEndTime = new Date(endTime * 1000).toLocaleString();
+    const {
+        seller,
+        startingPrice,
+        currentPrice,
+        endTime,
+        highestBidder,
+        status,
+        description,
+        item
+    } = auctionDetails;
 
-  return (
-    <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-300">
-      <div className="p-4">
-        <h3 className="text-xl font-bold text-white mb-2">Auction Details</h3>
-        <div className="text-gray-400 text-sm mb-2">
-          <p>
-            <strong>Highest Bidder:</strong>{' '}
-            {highestBidder === '0x0000000000000000000000000000000000000000'
-              ? 'No bids yet'
-              : highestBidder}
-          </p>
-          <p>
-            <strong>Highest Bid:</strong> {highestBid} Wei
-          </p>
-          <p>
-            <strong>Starting Price:</strong> {startingPrice} Wei
-          </p>
-          <p>
-            <strong>Current Price:</strong> {currentPrice} Wei
-          </p>
-          <p>
-            <strong>End Time:</strong> {formattedEndTime}
-          </p>
+    const formattedStartingPrice = startingPrice ? ethers.utils.formatEther(startingPrice) : '0';
+    const formattedCurrentPrice = currentPrice ? ethers.utils.formatEther(currentPrice) : '0';
+    const endDate = new Date(endTime * 1000).toLocaleString();
+    const isPhysical = item && item.isPhysical;
+    const itemDescription = item ? item.description : 'No description available';
+
+    return (
+        <div className="space-y-4">
+            <h3 className="text-xl font-semibold text-white">
+                {description || 'Untitled Auction'}
+            </h3>
+            
+            <div className="text-gray-300">
+                <p>Starting Price: {formattedStartingPrice} ETH</p>
+                <p>Current Price: {formattedCurrentPrice} ETH</p>
+                <p>End Time: {endDate}</p>
+                <p>Status: {status}</p>
+                <p>Type: {isPhysical ? 'Physical Item' : 'Digital Item'}</p>
+            </div>
+
+            <div className="text-gray-400">
+                <p>Seller: {seller}</p>
+                <p>Highest Bidder: {highestBidder || 'No bids yet'}</p>
+                <p>Item Description: {itemDescription}</p>
+            </div>
+
+            {isPhysical && item && (
+                <div className="mt-4 p-4 bg-gray-700 rounded-lg">
+                    <h4 className="text-lg font-medium text-white mb-2">Physical Item Details</h4>
+                    <div className="text-gray-300">
+                        <p>Condition: {item.condition}</p>
+                        <p>Dimensions: {item.dimensions}</p>
+                        <p>Weight: {item.weight}</p>
+                        <p>Shipping Address: {item.shippingAddress}</p>
+                    </div>
+                </div>
+            )}
         </div>
-        <button className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">
-          Place Bid
-        </button>
-      </div>
-    </div>
-  );
+    );
 };
 
 export default AuctionCard;

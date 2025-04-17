@@ -1,77 +1,164 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.19;
 
-contract EnglishAuction {
-    address public auctioneer;
-    string public auctionId; // Automatically generated Auction ID
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
+import "./PhysicalItemBase.sol";
+
+contract EnglishAuction is PhysicalItemBase, ReentrancyGuard, Pausable {
+    address private _seller;
     string public description;
     string public image;
-    uint public startingPrice;
-    uint public highestBid;
-    address public highestBidder;
-    uint public endTime;
+    uint256 public startingPrice;
+    uint256 public currentPrice;
+    uint256 public endTime;
+    address private _highestBidder;
     bool public isCompleted;
 
-    event AuctionCreated(string auctionId, string description, uint startingPrice, uint endTime);
-    event NewBid(address bidder, uint amount);
-    event AuctionEnded(address winner, uint amount);
+    modifier onlyEscrowFunded() override {
+        require(escrowFunded, "Escrow not funded");
+        _;
+    }
+
+    modifier onlySeller() override {
+        require(msg.sender == _seller, "Only seller can call this");
+        _;
+    }
+
+    modifier onlyBuyer() override {
+        require(msg.sender == _highestBidder, "Only buyer can call this");
+        _;
+    }
 
     constructor(
         string memory _description,
         string memory _image,
-        uint _startingPrice,
-        uint _endTime
+        uint256 _startingPrice,
+        uint256 _duration,
+        string memory _name,
+        string memory _itemDescription,
+        string memory _condition,
+        string memory _dimensions,
+        uint256 _weight,
+        string[] memory _images,
+        string memory _shippingAddress,
+        bool _isPhysical
     ) {
-        auctioneer = msg.sender;
+        _seller = msg.sender;
         description = _description;
         image = _image;
         startingPrice = _startingPrice;
-        highestBid = 0;
-        highestBidder = address(0);
-        endTime = _endTime;
+        currentPrice = _startingPrice;
+        endTime = block.timestamp + _duration;
         isCompleted = false;
 
-        // Generate a unique Auction ID
-        auctionId = _generateAuctionId();
+        // Initialize physical item details
+        item = PhysicalItem({
+            name: _name,
+            description: _itemDescription,
+            condition: _condition,
+            dimensions: _dimensions,
+            weight: _weight,
+            images: _images,
+            shippingAddress: _shippingAddress,
+            isPhysical: _isPhysical
+        });
 
-        emit AuctionCreated(auctionId, description, startingPrice, endTime);
+        emit AuctionCreated(msg.sender, _startingPrice, _duration, _description);
     }
 
-    function _generateAuctionId() private view returns (string memory) {
-        return _toHex(keccak256(abi.encodePacked(block.timestamp, msg.sender, description)));
+    function getCurrentPrice() external view override returns (uint256) {
+        return currentPrice;
     }
 
-    function _toHex(bytes32 data) private pure returns (string memory) {
-        bytes memory alphabet = "0123456789abcdef";
-        bytes memory str = new bytes(64);
-        for (uint i = 0; i < 32; i++) {
-            str[i * 2] = alphabet[uint(uint8(data[i] >> 4))];
-            str[1 + i * 2] = alphabet[uint(uint8(data[i] & 0x0f))];
+    function placeBid() external payable override nonReentrant whenNotPaused {
+        require(!isCompleted, "Auction has ended");
+        require(block.timestamp < endTime, "Auction has expired");
+        require(msg.value > currentPrice, "Bid must be higher than current price");
+
+        if (_highestBidder != address(0)) {
+            // Refund the previous highest bidder
+            payable(_highestBidder).transfer(currentPrice);
         }
-        return string(str);
+
+        _highestBidder = msg.sender;
+        currentPrice = msg.value;
+
+        emit BidPlaced(msg.sender, msg.value);
     }
 
-    function bid() external payable {
-        require(block.timestamp < endTime, "Auction has ended");
-        require(msg.value > highestBid, "Bid must be higher than the current highest bid");
-
-        if (highestBid != 0) {
-            payable(highestBidder).transfer(highestBid);
-        }
-
-        highestBid = msg.value;
-        highestBidder = msg.sender;
-
-        emit NewBid(msg.sender, msg.value);
-    }
-
-    function endAuction() external {
-        require(block.timestamp >= endTime, "Auction is still ongoing");
+    function endAuction() external override {
         require(!isCompleted, "Auction already ended");
-
+        require(block.timestamp >= endTime, "Auction still active");
+        
         isCompleted = true;
-        emit AuctionEnded(highestBidder, highestBid);
+        
+        if (_highestBidder != address(0)) {
+            if (item.isPhysical) {
+                // Create escrow for physical items
+                uint256 escrowFee = getEscrowAmount();
+                escrow = Escrow({
+                    isActive: true,
+                    escrowAgent: address(this),
+                    escrowFee: escrowFee,
+                    itemReceived: false,
+                    paymentReleased: false
+                });
+                emit EscrowCreated(escrow.escrowAgent, escrowFee);
+            } else {
+                // For digital items, transfer payment immediately
+                payable(_seller).transfer(currentPrice);
+            }
+        }
 
-        payable(auctioneer).transfer(highestBid);
+        emit AuctionEnded(_highestBidder, currentPrice);
+    }
+
+    function seller() public view override returns (address) {
+        return _seller;
+    }
+
+    function winner() public view override returns (address) {
+        return _highestBidder;
+    }
+
+    function getAuctionDetails() external view override returns (
+        address sellerAddr,
+        string memory desc,
+        string memory img,
+        uint256 auctionPrice,
+        uint256 auctionEndTime,
+        bool completed,
+        address winnerAddr,
+        PhysicalItem memory physicalItem,
+        Escrow memory escrowInfo
+    ) {
+        return (
+            _seller,
+            description,
+            image,
+            currentPrice,
+            endTime,
+            isCompleted,
+            _highestBidder,
+            item,
+            escrow
+        );
+    }
+
+    function auctioneer() public view override returns (address) {
+        return _seller;
+    }
+
+    function getAuctionPrice() public view override returns (uint256) {
+        return currentPrice;
+    }
+
+    function purchases(address) public pure override returns (uint256) {
+        return 0; // English auctions don't track purchases
+    }
+
+    function onlyOwner() internal override {
+        require(msg.sender == _seller, "Only owner can call this");
     }
 }
